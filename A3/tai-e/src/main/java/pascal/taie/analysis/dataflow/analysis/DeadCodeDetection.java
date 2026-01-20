@@ -45,9 +45,7 @@ import pascal.taie.ir.stmt.If;
 import pascal.taie.ir.stmt.Stmt;
 import pascal.taie.ir.stmt.SwitchStmt;
 
-import java.util.Comparator;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 
 public class DeadCodeDetection extends MethodAnalysis {
 
@@ -59,18 +57,140 @@ public class DeadCodeDetection extends MethodAnalysis {
 
     @Override
     public Set<Stmt> analyze(IR ir) {
-        // obtain CFG
         CFG<Stmt> cfg = ir.getResult(CFGBuilder.ID);
-        // obtain result of constant propagation
         DataflowResult<Stmt, CPFact> constants =
                 ir.getResult(ConstantPropagation.ID);
-        // obtain result of live variable analysis
         DataflowResult<Stmt, SetFact<Var>> liveVars =
                 ir.getResult(LiveVariableAnalysis.ID);
-        // keep statements (dead code) sorted in the resulting set
-        Set<Stmt> deadCode = new TreeSet<>(Comparator.comparing(Stmt::getIndex));
-        // TODO - finish me
-        // Your task is to recognize dead code in ir and add it to deadCode
+
+        // Phase 1: compute reachable statements
+        Set<Stmt> reachable = computeReachable(cfg, constants);
+
+        // Phase 2: compute dead code
+
+        return computeDeadCode(cfg, reachable, liveVars);
+    }
+
+    private Set<Stmt> computeReachable(
+            CFG<Stmt> cfg,
+            DataflowResult<Stmt, CPFact> constants) {
+
+        Set<Stmt> reachable = new HashSet<>();
+        Queue<Stmt> worklist = new LinkedList<>();
+
+        Stmt entry = cfg.getEntry();
+        reachable.add(entry);
+        worklist.add(entry);
+
+        while (!worklist.isEmpty()) {
+            Stmt stmt = worklist.poll();
+
+            if (stmt instanceof If ifStmt) {
+                CPFact inFact = constants.getInFact(stmt);
+                Value cond = ConstantPropagation.evaluate(
+                        ifStmt.getCondition(), inFact);
+
+                for (Edge<Stmt> edge : cfg.getOutEdgesOf(stmt)) {
+                    if (!isReachableBranch(cond, edge)) {
+                        continue;
+                    }
+                    Stmt target = edge.getTarget();
+                    if (reachable.add(target)) {
+                        worklist.add(target);
+                    }
+                }
+
+            } else if (stmt instanceof SwitchStmt switchStmt) {
+                CPFact inFact = constants.getInFact(stmt);
+                Value switchVal = ConstantPropagation.evaluate(
+                        switchStmt.getVar(), inFact);
+
+                for (Edge<Stmt> edge : cfg.getOutEdgesOf(stmt)) {
+                    if (!isReachableSwitchEdge(switchStmt, switchVal, edge)) {
+                        continue;
+                    }
+                    Stmt target = edge.getTarget();
+                    if (reachable.add(target)) {
+                        worklist.add(target);
+                    }
+                }
+
+            } else {
+                for (Edge<Stmt> edge : cfg.getOutEdgesOf(stmt)) {
+                    Stmt target = edge.getTarget();
+                    if (reachable.add(target)) {
+                        worklist.add(target);
+                    }
+                }
+            }
+        }
+
+        return reachable;
+    }
+
+    private boolean isReachableBranch(Value cond, Edge<Stmt> edge) {
+        if (!cond.isConstant()) {
+            return true;
+        }
+        int c = cond.getConstant();
+        return (c == 1 && edge.getKind() == Edge.Kind.IF_TRUE)
+                || (c == 0 && edge.getKind() == Edge.Kind.IF_FALSE);
+    }
+
+    private boolean isReachableSwitchEdge(
+            SwitchStmt stmt,
+            Value switchVal,
+            Edge<Stmt> edge) {
+
+        if (!switchVal.isConstant()) {
+            return true;
+        }
+
+        int constVal = switchVal.getConstant();
+
+        boolean matched = false;
+        for (int caseVal : stmt.getCaseValues()) {
+            if (caseVal == constVal) {
+                matched = true;
+                break;
+            }
+        }
+
+        if (edge.getKind() == Edge.Kind.SWITCH_CASE) {
+            return edge.getCaseValue() == constVal;
+        } else {
+            return !matched;
+        }
+    }
+
+    private Set<Stmt> computeDeadCode(
+            CFG<Stmt> cfg,
+            Set<Stmt> reachable,
+            DataflowResult<Stmt, SetFact<Var>> liveVars) {
+
+        Set<Stmt> deadCode =
+                new TreeSet<>(Comparator.comparing(Stmt::getIndex));
+
+        for (Stmt stmt : cfg.getNodes()) {
+
+            if (!reachable.contains(stmt)&&stmt.getLineNumber()>0) {
+                deadCode.add(stmt);
+                continue;
+            }
+
+            if (stmt instanceof AssignStmt<?,?> assignStmt) {
+                if (!(assignStmt.getLValue() instanceof Var lVar)) {
+                    continue;
+                }
+                SetFact<Var> out = liveVars.getOutFact(stmt);
+
+                if (!out.contains(lVar)
+                        && hasNoSideEffect(assignStmt.getRValue())) {
+                    deadCode.add(stmt);
+                }
+            }
+        }
+
         return deadCode;
     }
 
