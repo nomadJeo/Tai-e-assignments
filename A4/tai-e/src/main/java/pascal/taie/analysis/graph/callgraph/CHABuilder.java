@@ -31,8 +31,10 @@ import pascal.taie.language.classes.JMethod;
 import pascal.taie.language.classes.Subsignature;
 
 import java.util.ArrayDeque;
+import java.util.Collection;
 import java.util.Queue;
 import java.util.Set;
+
 
 /**
  * Implementation of the CHA algorithm.
@@ -51,6 +53,26 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
         DefaultCallGraph callGraph = new DefaultCallGraph();
         callGraph.addEntryMethod(entry);
         // TODO - finish me
+        Queue<JMethod> worklist = new ArrayDeque<>();
+        worklist.add(entry);
+        while (!worklist.isEmpty()) {
+            JMethod method = worklist.poll();
+            if (callGraph.reachableMethods.contains(method)) {
+                continue;
+            }
+            callGraph.addReachableMethod(method);
+            callGraph.callSitesIn(method).forEach(
+                    callSite -> {
+                        Set<JMethod> targets = resolve(callSite);
+                        targets.forEach(
+                                target -> {
+                                    callGraph.addEdge(new Edge<>(CallGraphs.getCallKind(callSite), callSite, target));
+                                    worklist.add(target);
+                                }
+                        );
+                    }
+            );
+        }
         return callGraph;
     }
 
@@ -59,7 +81,79 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
      */
     private Set<JMethod> resolve(Invoke callSite) {
         // TODO - finish me
-        return null;
+        MethodRef methodRef = callSite.getMethodRef();
+        Subsignature subsignature = methodRef.getSubsignature();
+        Set<JMethod> targets = new java.util.HashSet<>();
+        if (callSite.isStatic()) {
+            targets.add(dispatch(methodRef.getDeclaringClass(), subsignature));
+        } else if (callSite.isSpecial()) {
+            JClass declaringClass = methodRef.getDeclaringClass();
+            targets.add(dispatch(declaringClass, subsignature));
+        } else {
+            Set<JClass> possibleClasses = new java.util.HashSet<>();
+            JClass declaringClass = methodRef.getDeclaringClass();
+            if (callSite.isInterface()) {
+                possibleClasses.addAll(getAllConcreteSubtypes(declaringClass));
+            } else if (callSite.isVirtual()) {
+                possibleClasses.add(declaringClass);
+                possibleClasses.addAll(getAllSubclasses(declaringClass));
+            }
+            for (JClass possibleClass : possibleClasses) {
+                JMethod method = dispatch(possibleClass, subsignature);
+                if (method != null) {
+                    targets.add(method);
+                }
+            }
+        }
+        return targets;
+    }
+
+    private Set<JClass> getAllConcreteSubtypes(JClass type) {
+        Set<JClass> result = new java.util.HashSet<>();
+        Queue<JClass> worklist = new ArrayDeque<>();
+        worklist.add(type);
+
+        while (!worklist.isEmpty()) {
+            JClass current = worklist.poll();
+
+            if (current.isInterface()) {
+
+                Collection<JClass> impls =
+                        hierarchy.getDirectImplementorsOf(current);
+                worklist.addAll(impls);
+
+                Collection<JClass> subInterfaces =
+                        hierarchy.getDirectSubinterfacesOf(current);
+                worklist.addAll(subInterfaces);
+
+            } else {
+
+                Collection<JClass> subclasses =
+                        hierarchy.getDirectSubclassesOf(current);
+                worklist.addAll(subclasses);
+
+                if (!current.isAbstract()) {
+                    result.add(current);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private Set<JClass> getAllSubclasses(JClass jclass) {
+        Set<JClass> subclasses = new java.util.HashSet<>();
+        Queue<JClass> worklist = new ArrayDeque<>();
+        worklist.add(jclass);
+        while (!worklist.isEmpty()) {
+            JClass current = worklist.poll();
+            Collection<JClass> directSubclasses = hierarchy.getDirectSubclassesOf(current);
+            worklist.addAll(directSubclasses);
+            if (!current.isAbstract()) {
+                subclasses.add(current);
+            }
+        }
+        return subclasses;
     }
 
     /**
@@ -70,6 +164,15 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
      */
     private JMethod dispatch(JClass jclass, Subsignature subsignature) {
         // TODO - finish me
+        JMethod method = jclass.getDeclaredMethod(subsignature);
+        if (method != null && !method.isAbstract()) {
+            return method;
+        } else {
+            JClass superClass = jclass.getSuperClass();
+            if (superClass != null) {
+                return dispatch(superClass, subsignature);
+            }
+        }
         return null;
     }
 }
