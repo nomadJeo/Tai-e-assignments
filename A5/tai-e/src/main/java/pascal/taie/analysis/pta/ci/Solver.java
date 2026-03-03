@@ -36,11 +36,8 @@ import pascal.taie.ir.stmt.*;
 import pascal.taie.language.classes.ClassHierarchy;
 import pascal.taie.language.classes.JMethod;
 import pascal.taie.language.type.Type;
-
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import pascal.taie.util.collection.Maps;
+import pascal.taie.util.collection.MultiMap;
 
 import static pascal.taie.analysis.graph.callgraph.CallGraphs.getCallKind;
 
@@ -54,11 +51,11 @@ class Solver {
     private WorkList workList;
     private StmtProcessor stmtProcessor;
     private ClassHierarchy hierarchy;
-    private Map<Var, Set<LoadField>> loads;
-    private Map<Var, Set<StoreField>> stores;
-    private Map<Var, Set<StoreArray>> arrayStores;
-    private Map<Var, Set<LoadArray>> arrayLoads;
-    private Map<Var, Set<Invoke>> instanceCalls;
+    private MultiMap<Var, LoadField> loads;
+    private MultiMap<Var, StoreField> stores;
+    private MultiMap<Var, StoreArray> arrayStores;
+    private MultiMap<Var, LoadArray> arrayLoads;
+    private MultiMap<Var, Invoke> instanceCalls;
 
     Solver(HeapModel heapModel) {
         this.heapModel = heapModel;
@@ -81,11 +78,12 @@ class Solver {
         callGraph = new DefaultCallGraph();
         stmtProcessor = new StmtProcessor();
         hierarchy = World.get().getClassHierarchy();
-        stores = new HashMap<>();
-        loads = new HashMap<>();
-        arrayStores = new HashMap<>();
-        arrayLoads = new HashMap<>();
-        instanceCalls = new HashMap<>();
+        stores = Maps.newMultiMap();
+        loads = Maps.newMultiMap();
+        arrayStores = Maps.newMultiMap();
+        arrayLoads = Maps.newMultiMap();
+        instanceCalls = Maps.newMultiMap();
+
         // initialize main method
         JMethod main = World.get().getMainMethod();
         callGraph.addEntryMethod(main);
@@ -132,8 +130,8 @@ class Solver {
             }
 
             if (pointer instanceof VarPtr varPtr) {
+                Var x = varPtr.getVar();
                 for (Obj obj : difference) {
-                    Var x = varPtr.getVar();
                     // y = x.f -> add edge (obj.f -> y)
                     if (loads.containsKey(x)) {
                         processLoad(x, obj);
@@ -193,9 +191,11 @@ class Solver {
             if (!oldPointsToSet.contains(obj)) {
                 difference.addObject(obj);
                 oldPointsToSet.addObject(obj);
-                for (Pointer succ : pointerFlowGraph.getSuccsOf(pointer)) {
-                    workList.addEntry(succ, new PointsToSet(obj));
-                }
+            }
+        }
+        if(!difference.isEmpty()){
+            for (Pointer succ : pointerFlowGraph.getSuccsOf(pointer)) {
+                workList.addEntry(succ, difference);
             }
         }
         return difference;
@@ -306,7 +306,7 @@ class Solver {
             FieldAccess fieldAccess = stmt.getFieldAccess();
             if (fieldAccess instanceof InstanceFieldAccess instanceFieldAccess) {
                 Var base = instanceFieldAccess.getBase();
-                loads.computeIfAbsent(base, b -> new HashSet<>()).add(stmt);
+                loads.put(base, stmt);
             } else if (fieldAccess instanceof StaticFieldAccess staticFieldAccess) {
                 StaticField staticField = pointerFlowGraph.getStaticField(staticFieldAccess.getFieldRef().resolve());
                 Pointer lhsPtr = pointerFlowGraph.getVarPtr(stmt.getLValue());
@@ -322,7 +322,7 @@ class Solver {
             FieldAccess fieldAccess = stmt.getFieldAccess();
             if (fieldAccess instanceof InstanceFieldAccess instanceFieldAccess) {
                 Var base = instanceFieldAccess.getBase();
-                stores.computeIfAbsent(base, b -> new HashSet<>()).add(stmt);
+                stores.put(base, stmt);
             } else if (fieldAccess instanceof StaticFieldAccess staticFieldAccess) {
                 StaticField staticField = pointerFlowGraph.getStaticField(staticFieldAccess.getFieldRef().resolve());
                 Pointer rhsPtr = pointerFlowGraph.getVarPtr(stmt.getRValue());
@@ -334,14 +334,14 @@ class Solver {
         @Override
         public Void visit(StoreArray stmt) {
             Var base = stmt.getArrayAccess().getBase();
-            arrayStores.computeIfAbsent(base, b -> new HashSet<>()).add(stmt);
+            arrayStores.put(base, stmt);
             return null;
         }
 
         @Override
         public Void visit(LoadArray stmt) {
             Var base = stmt.getArrayAccess().getBase();
-            arrayLoads.computeIfAbsent(base, b -> new HashSet<>()).add(stmt);
+            arrayLoads.put(base, stmt);
             return null;
         }
 
@@ -352,7 +352,7 @@ class Solver {
             } else {
                 InvokeInstanceExp invokeExp = (InvokeInstanceExp) stmt.getInvokeExp();
                 Var base = invokeExp.getBase();
-                instanceCalls.computeIfAbsent(base, k -> new HashSet<>()).add(stmt);
+                instanceCalls.put(base, stmt);
             }
             return null;
         }
