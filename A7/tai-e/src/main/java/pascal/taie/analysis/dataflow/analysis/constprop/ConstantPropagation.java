@@ -66,6 +66,7 @@ public class ConstantPropagation extends
      * @return the resulting {@link Value}
      */
     public static Value evaluate(Exp exp, CPFact in) {
+        //TODO
         if(exp instanceof IntLiteral){
             return Value.makeConstant(((IntLiteral) exp).getValue());
         }else if (exp instanceof Var) {
@@ -148,7 +149,6 @@ public class ConstantPropagation extends
 
     @Override
     public CPFact newBoundaryFact(CFG<Stmt> cfg) {
-        // TODO - finish me
         CPFact cpFact = new CPFact();
         //不考虑跨方法传递常量，参数变量初始值均为NAC
         for (Var var : cfg.getMethod().getIR().getParams()) {
@@ -161,13 +161,11 @@ public class ConstantPropagation extends
 
     @Override
     public CPFact newInitialFact() {
-        // TODO - finish me
         return new CPFact();
     }
 
     @Override
     public void meetInto(CPFact fact, CPFact target) {
-        // TODO - finish me
         for (Var var : fact.keySet()) {
             Value v1 = fact.get(var);
             Value v2 = target.get(var);
@@ -180,7 +178,6 @@ public class ConstantPropagation extends
      * Meets two Values.
      */
     public Value meetValue(Value v1, Value v2) {
-        // TODO - finish me
         if (v1.isNAC() || v2.isNAC()) {
             return Value.getNAC();
         } else if (v1.isUndef()) {
@@ -196,6 +193,7 @@ public class ConstantPropagation extends
 
     @Override
     public boolean transferNode(Stmt stmt, CPFact in, CPFact out) {
+        //TODO
         CPFact newOut = in.copy();
 
         if (stmt instanceof DefinitionStmt<?,?> defStmt) {

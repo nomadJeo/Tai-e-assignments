@@ -109,7 +109,6 @@ class Solver {
      * Processes new reachable context-sensitive method.
      */
     private void addReachable(CSMethod csMethod) {
-        // TODO - finish me
         if (callGraph.addReachableMethod(csMethod)) {
             StmtProcessor stmtProcessor = new StmtProcessor(csMethod);
             csMethod.getMethod().getIR().getStmts().forEach(stmt -> stmt.accept(stmtProcessor));
@@ -120,7 +119,6 @@ class Solver {
      * Adds an edge "source -> target" to the PFG.
      */
     private void addPFGEdge(Pointer source, Pointer target) {
-        // TODO - finish me
         if (pointerFlowGraph.addEdge(source, target)) {
             if (source.getPointsToSet() != null && !source.getPointsToSet().isEmpty()) {
                 workList.addEntry(target, source.getPointsToSet());
@@ -132,7 +130,6 @@ class Solver {
      * Processes work-list entries until the work-list is empty.
      */
     private void analyze() {
-        // TODO - finish me
         while (!workList.isEmpty()) {
             WorkList.Entry entry = workList.pollEntry();
             Pointer cur = entry.pointer();
@@ -181,7 +178,6 @@ class Solver {
      * returns the difference set of pointsToSet and pt(pointer).
      */
     private PointsToSet propagate(Pointer pointer, PointsToSet pointsToSet) {
-        // TODO - finish me
         PointsToSet oldPointsToSet = pointer.getPointsToSet();
         PointsToSet difference = PointsToSetFactory.make();
         for (CSObj obj : pointsToSet) {
@@ -205,7 +201,6 @@ class Solver {
      * @param recvObj set of new discovered objects pointed by the variable.
      */
     private void processCall(CSVar recv, CSObj recvObj) {
-        // TODO - finish me
         for (Invoke callSite : instanceCalls.get(recv)) {
             //dispatch method
             JMethod callee = resolveCallee(recvObj, callSite);
@@ -382,7 +377,5 @@ class Solver {
             return null;
         }
 
-        // TODO - if you choose to implement addReachable()
-        //  via visitor pattern, then finish me
     }
 }

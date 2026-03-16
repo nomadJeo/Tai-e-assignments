@@ -29,7 +29,6 @@ import pascal.taie.analysis.pta.core.cs.element.CSMethod;
 import pascal.taie.analysis.pta.core.cs.element.CSObj;
 import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.language.classes.JMethod;
-import pascal.taie.language.type.Type;
 
 /**
  * Implementation of 2-type sensitivity.
@@ -44,18 +43,35 @@ public class _2TypeSelector implements ContextSelector {
     @Override
     public Context selectContext(CSCallSite callSite, JMethod callee) {
         // TODO - finish me
-        return null;
+        return callSite.getContext();
     }
 
     @Override
     public Context selectContext(CSCallSite callSite, CSObj recv, JMethod callee) {
         // TODO - finish me
+        Context callerContext = recv.getContext();
+        if (callerContext instanceof ListContext<?> listContext) {
+            if (listContext.getLength() > 1) {
+                return ListContext.make(listContext.getElementAt(1), recv.getObject().getContainerType());
+            } else if(listContext.getLength()==1){
+                return ListContext.make(listContext.getElementAt(0), recv.getObject().getContainerType());
+            }else{
+                return ListContext.make(recv.getObject().getContainerType());
+            }
+        }
         return null;
     }
 
     @Override
     public Context selectHeapContext(CSMethod method, Obj obj) {
         // TODO - finish me
-        return null;
+        Context methodContext = method.getContext();
+        if (methodContext instanceof ListContext<?> listContext) {
+            if (listContext.getLength() > 0) {
+                Object lastType = listContext.getElementAt(listContext.getLength() - 1);
+                return ListContext.make(lastType);
+            }
+        }
+        return getEmptyContext();
     }
 }
